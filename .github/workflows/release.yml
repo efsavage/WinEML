@@ -21,11 +21,11 @@ jobs:
     steps:
       # On manual runs, check out the *tag* being released so the artifact always
       # matches the tag it's attached to (not whatever the branch tip happens to be).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.inputs.tag || github.ref }}
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '9.0.x'
 
