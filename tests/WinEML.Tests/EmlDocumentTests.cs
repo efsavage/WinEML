@@ -320,6 +320,38 @@ public class EmlDocumentTests
         }
     }
 
+    // ---- the file must be left untouched ----
+
+    [Fact]
+    public void Load_DoesNotModifyTheFile()
+    {
+        var m = HtmlWith("<p>hi</p>", InlineImage("logo"));
+        string path = Path.Combine(Path.GetTempPath(), $"wineml_test_{Guid.NewGuid():N}.eml");
+        try
+        {
+            m.WriteTo(path);
+            byte[] bytesBefore = File.ReadAllBytes(path);
+            DateTime writeBefore = File.GetLastWriteTimeUtc(path);
+            DateTime accessBefore = File.GetLastAccessTimeUtc(path);
+
+            EmlDocument.Load(path);
+
+            // Read timestamps before re-reading content — our own ReadAllBytes
+            // below would bump the access time and mask the result.
+            DateTime accessAfter = File.GetLastAccessTimeUtc(path);
+            DateTime writeAfter = File.GetLastWriteTimeUtc(path);
+
+            // UntouchedFile suppresses even the OS last-access bump.
+            Assert.Equal(accessBefore, accessAfter);
+            Assert.Equal(writeBefore, writeAfter);
+            Assert.Equal(bytesBefore, File.ReadAllBytes(path));
+        }
+        finally
+        {
+            try { File.Delete(path); } catch { /* ignore */ }
+        }
+    }
+
     // ---- attachment save ----
 
     [Fact]

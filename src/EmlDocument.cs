@@ -48,7 +48,9 @@ internal sealed class EmlDocument
 
     public static EmlDocument Load(string path)
     {
-        var message = MimeMessage.Load(path);
+        MimeMessage message;
+        using (var stream = UntouchedFile.OpenRead(path))
+            message = MimeMessage.Load(stream);
 
         string date = message.Date == DateTimeOffset.MinValue
             ? string.Empty

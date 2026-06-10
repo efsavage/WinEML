@@ -122,6 +122,7 @@ internal sealed class MainForm : Form
         _textView.BackColor = Color.White;
         _webView.Dock = DockStyle.Fill;
         _webView.Visible = false;
+        _webView.KeyDown += OnWebViewKeyDown;
         _bodyHost.Controls.Add(_textView);
         _bodyHost.Controls.Add(_webView);
 
@@ -205,6 +206,11 @@ internal sealed class MainForm : Form
             {
                 Telemetry.Mark("html-rendered", e.IsSuccess ? "ok" : $"failed:{e.WebErrorStatus}");
                 Diag($"NavigationCompleted success={e.IsSuccess} status={e.WebErrorStatus}");
+                // WebView2 grabs focus when a navigation completes, which would
+                // silently disable Esc/◀/▶ the moment a message opens. Take it
+                // back — clicking into the HTML still focuses the browser for
+                // keyboard scrolling.
+                BeginInvoke(() => { if (_webView.Visible) _headerView.Focus(); });
                 BenchExitAfter(120); // small settle so the paint is real
             };
             core.NewWindowRequested += (_, e) =>
@@ -435,7 +441,7 @@ internal sealed class MainForm : Form
         if (path is null || !File.Exists(path)) { _textView.Text = string.Empty; return; }
         try
         {
-            string raw = await Task.Run(() => File.ReadAllText(path));
+            string raw = await Task.Run(() => UntouchedFile.ReadAllText(path));
             if (gen != _loadGen || _mode != ViewMode.Source) return; // navigated/switched away
             _textView.Text = NormalizeNewlines(raw);
             _textView.Select(0, 0);
@@ -590,22 +596,66 @@ internal sealed class MainForm : Form
 
     // ------------------------------------------------------------- shortcuts
 
-    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    /// <summary>
+    /// Is this key combination an app shortcut right now? Plain ◀/▶ only count
+    /// while there are sibling files to browse, so they keep scrolling/moving
+    /// the caret in single-file sessions.
+    /// </summary>
+    private bool IsShortcut(Keys keyData) => keyData switch
+    {
+        Keys.Escape => true,
+        Keys.Control | Keys.O => true,
+        Keys.Left or Keys.Right => _siblings.Length > 1,
+        Keys.Control | Keys.Left or Keys.Control | Keys.Right => true,
+        Keys.Control | Keys.Home or Keys.Control | Keys.End => true,
+        Keys.F5 => true,
+        Keys.Alt | Keys.H or Keys.Alt | Keys.T or Keys.Alt | Keys.U => true,
+        _ => false,
+    };
+
+    private void RunShortcut(Keys keyData)
     {
         switch (keyData)
         {
-            case Keys.Escape: Close(); return true;
-            case Keys.Control | Keys.O: OpenViaDialog(); return true;
-            case Keys.Control | Keys.Left: Navigate(-1); return true;
-            case Keys.Control | Keys.Right: Navigate(+1); return true;
-            case Keys.Control | Keys.Home: if (_siblings.Length > 1) { _index = 0; LoadFile(_siblings[0]); } return true;
-            case Keys.Control | Keys.End: if (_siblings.Length > 1) { _index = _siblings.Length - 1; LoadFile(_siblings[_index]); } return true;
-            case Keys.F5: if (_currentPath is not null) LoadFile(_currentPath); return true;
-            case Keys.Alt | Keys.H: SetMode(ViewMode.Html, true); return true;
-            case Keys.Alt | Keys.T: SetMode(ViewMode.Text, true); return true;
-            case Keys.Alt | Keys.U: SetMode(ViewMode.Source, true); return true;
+            case Keys.Escape: Close(); break;
+            case Keys.Control | Keys.O: OpenViaDialog(); break;
+            case Keys.Left:
+            case Keys.Control | Keys.Left: Navigate(-1); break;
+            case Keys.Right:
+            case Keys.Control | Keys.Right: Navigate(+1); break;
+            case Keys.Control | Keys.Home: if (_siblings.Length > 1) { _index = 0; LoadFile(_siblings[0]); } break;
+            case Keys.Control | Keys.End: if (_siblings.Length > 1) { _index = _siblings.Length - 1; LoadFile(_siblings[_index]); } break;
+            case Keys.F5: if (_currentPath is not null) LoadFile(_currentPath); break;
+            case Keys.Alt | Keys.H: SetMode(ViewMode.Html, true); break;
+            case Keys.Alt | Keys.T: SetMode(ViewMode.Text, true); break;
+            case Keys.Alt | Keys.U: SetMode(ViewMode.Source, true); break;
+        }
+    }
+
+    // Covers the form, toolbar, and text views — but not the WebView2, whose
+    // input goes to the browser process (see OnWebViewKeyDown).
+    protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+    {
+        if (IsShortcut(keyData))
+        {
+            RunShortcut(keyData);
+            return true;
         }
         return base.ProcessCmdKey(ref msg, keyData);
+    }
+
+    // When the HTML view has focus, keys are handled by Chromium in another
+    // process; the control forwards accelerator presses (Ctrl/Alt combos and
+    // non-character keys like Esc and the arrows) as KeyDown. Handled=true
+    // suppresses the browser default, and the action is deferred because the
+    // browser process is blocked while this handler runs.
+    private void OnWebViewKeyDown(object? sender, KeyEventArgs e)
+    {
+        Diag($"webview KeyDown: {e.KeyData}");
+        if (!IsShortcut(e.KeyData)) return;
+        e.Handled = true;
+        Keys key = e.KeyData;
+        BeginInvoke(() => RunShortcut(key));
     }
 
     // ------------------------------------------------------------- utilities

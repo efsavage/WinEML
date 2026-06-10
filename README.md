@@ -48,7 +48,7 @@ Easiest: open any `.eml` in WinEML, then **Tools ▾ → "Set WinEML as default 
 | Key | Action |
 | --- | --- |
 | `Ctrl+O` | Open file |
-| `Ctrl+←` / `Ctrl+→` | Previous / next file in folder |
+| `←` / `→` (or `Ctrl+←` / `Ctrl+→`) | Previous / next file in folder |
 | `Ctrl+Home` / `Ctrl+End` | First / last file |
 | `Alt+H` / `Alt+T` / `Alt+U` | HTML / Text / Source view |
 | `F5` | Reload |
@@ -88,6 +88,7 @@ Email is hostile input, so WinEML is locked down by default:
 - **No network.** Every remote request — tracking pixels, remote images, web fonts, beacons — is hard-blocked at the WebView2 layer. Only resources embedded *inside the file* are shown: inline `cid:` images are inlined as local `data:` URIs.
 - **Strict CSP, enforced twice.** Rendered messages are served with a `Content-Security-Policy` **response header** (`default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; base-uri 'none'; form-action 'none'`) — a header governs the document no matter how malformed the email's markup is — and the same policy is injected as a meta tag for defense-in-depth. The renderer refuses remote/active content before the request blocker is even consulted.
 - **Nothing touches the disk.** Rendered bodies are streamed to the engine straight from memory — no temp files, ever, for any message size.
+- **Your files are left untouched.** WinEML opens messages strictly read-only with full sharing (it never locks a file) and preserves even the last-access timestamp — viewing a message leaves no trace on it.
 - **No surprise navigation.** Clicking a link hands the URL to your default browser; nothing loads or navigates in-app.
 - **Sandboxed engine.** HTML and images are parsed/decoded inside WebView2's Chromium multi-process sandbox. Keep the auto-updating WebView2 runtime current for the latest decoder fixes.
 - **Strictly a viewer.** No inbox, no accounts, no outbound mail — WinEML never sends anything.
