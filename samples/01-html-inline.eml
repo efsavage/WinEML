@@ -1,0 +1,59 @@
+From: Alice Carter <alice@example.com>
+To: Bob Jones <bob@example.com>
+Cc: Team <team@example.com>
+Subject: WinEML test - inline image shows, remote blocked
+Date: Mon, 09 Jun 2026 10:00:00 -0400
+MIME-Version: 1.0
+Content-Type: multipart/related; boundary="REL"
+
+--REL
+Content-Type: multipart/alternative; boundary="ALT"
+
+--ALT
+Content-Type: text/plain; charset=utf-8
+
+Plain-text version. The HTML view has an inline image and a (blocked) remote image.
+
+--ALT
+Content-Type: text/html; charset=utf-8
+
+<html><body style="font-family:Segoe UI,Arial;font-size:14px;color:#222">
+<h2 style="color:#246ec8">Hello from WinEML</h2>
+<p>Inline (embedded) image - should display:</p>
+<img src="cid:img1" alt="inline logo">
+<p>Remote image - should be <b>blocked</b> (broken icon, no network):</p>
+<img src="https://example.com/tracker.png" width="160" height="90" alt="remote blocked">
+<p><a href="https://example.com">This link</a> opens in your default browser.</p>
+</body></html>
+
+--ALT--
+
+--REL
+Content-Type: image/png
+Content-Transfer-Encoding: base64
+Content-ID: <img1>
+Content-Disposition: inline; filename="logo.png"
+
+iVBORw0KGgoAAAANSUhEUgAAAKAAAABaCAYAAAA/xl1SAAAAAXNSR0IArs4c6QAAAARnQU1BAACx
+jwv8YQUAAAAJcEhZcwAADsMAAA7DAcdvqGQAAARPSURBVHhe7Zg9UuNAEEY5DGfiGHsFcq4BxyBz
+silFSOZy5CqnTrUlMLbm6x7N+Ae+VdXrqhegaWmk7qcZ4bv7P38HABd3egDgN0FAsIKAYAUBwQoC
+ghUEBCsICFYQEKwgIFhBQLCCgGAFAcEKAoIVBAQrCAhWEBCsICBYQUCwgoBgBQHBCgKCFQQEKwgI
+VhAQrCAgWEFAsIKAYAUBwQoCghUEBCsICFYQEKwgIFhBQLCCgGBlAQK+Dc/b4RTvH0kOLJWzBXx8
+n8jwGbvhMckbeXjda/Kweol5ae5BtHB85hqXIYLPxvRZZ87reEmy5/qM7WZ4aNzf+vUtXG+pnC3g
+/cuurMawH56fkrxU1npzNPe7yLFR9fkuIza4Hp0CzryUzXMRsMHTZliX9agU5GNYSd5nhAJnuaVk
+Uznzua4hNrgevQI2VumkhscI9Ynz3L4GPs4XMClIuqqFlfI7khUsNKS1gtyS+Dx9DY7nFZHV5EBc
+1SeBgG1CAUPRkpxJhNVBZZ1p3u25tMF63n5YF3/XXqLyvPW2VUudp/f+lsFFAgZhQrGlaNt9scJp
+AVXWYrw1V3Vct/Wa2Jc2WM/bDSv5jg0v2kix2u+H51e5fwTsITa3LHY5vn7dlPlFkbXAskVXBZsZ
+D8cmcbMG63nJvInwxcu23QyPulPc7P6WwYUCNopSNGIUSvOnEonM2gBtalPAdpQvi95bb4P1vPG+
+9MWc3xnGeXT1D88f5um9v2VwoYBx25y+7cVPKoeCav5RAv0HRFeNIFiPgJMcvf4YxRyxwdWYPe9r
+Tv05qZBdt9+nWBcE7EUbfyycFOy7aZJ/LKIcD99NOk9TwPhftkox/wkwEx0CBuEn5+j2m72YCNiN
+bjeHxksDTkLlW23ZgChPFKwloG57Sc5PClg9rt/FXxIhYHKwF11ZRtnqQmkhx8bIsVD8RB4VrDWe
+5TQE7GuwnneaV6X6fAnDd3GeG2ug8/Te3zK4SkAt3liY7Puvlr96kVVRv/9GVB4VrDWe5fywgLoL
+jM+Vbb9jrtZEaxbn6b2/ZXCVgLHQu3SbqeWv33eV7XqCyqOCtcaznJ8WUMe2u2E1+Xt6fQRMDvaj
+34FlRKHm8hNxRlQezWuNZzk/LmAi1jHK79yQh4Dnod+Bp0hEmMsPhT+g8uh1W+NZzi8IqKv9MRqf
+JToe5+m9v2VwtYChgN8RCjmfXy2qyqONbo1nOQ0B5+J0n3qezqvjX6HPGeoR6pZfpxZ6/f+dqwWs
+venVQlTy43Z9QOXRRrfGs5xfETCRK/mZKeQg4LnkBaoKlX4HxuYdUXk0tzWe5fySgOFZg1wIeAMB
+AS4HAcEKAoIVBAQrCAhWEBCsICBYQUCwgoBgBQHBCgKCFQQEKwgIVhAQrCAgWEFAsIKAYAUBwQoC
+ghUEBCsICFYQEKwgIFhBQLCCgGAFAcEKAoIVBAQrCAhWEBCsICBYQUCwgoBgBQHByj//05AbSaTs
+dgAAAABJRU5ErkJggg==
+--REL--

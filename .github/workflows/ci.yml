@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Test
+        run: dotnet test tests/WinEML.Tests/WinEML.Tests.csproj
+
+      # Full publish so the ReadyToRun / self-contained path is exercised, not
+      # just IL compilation — this is the artifact users actually download.
+      - name: Publish
+        run: dotnet publish -c Release -r win-x64

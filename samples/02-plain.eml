@@ -1,0 +1,15 @@
+From: newsletter@example.org
+To: bob@example.com
+Subject: WinEML test - plain text only
+Date: Sun, 08 Jun 2026 18:30:00 -0400
+MIME-Version: 1.0
+Content-Type: text/plain; charset=utf-8
+
+This message is plain text only.
+It should render instantly in the Text view with no HTML engine needed.
+
+  - line one
+  - line two
+
+Regards,
+The Example Team

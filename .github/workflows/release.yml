@@ -1,0 +1,65 @@
+name: Release
+
+# Push a tag like v0.1.0 to build and stage a release. The release is created as
+# a DRAFT — review the artifact and notes, then publish it manually from the
+# GitHub Releases page. Can also be run manually via "Run workflow".
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag (e.g. v0.1.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      # On manual runs, check out the *tag* being released so the artifact always
+      # matches the tag it's attached to (not whatever the branch tip happens to be).
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Determine version
+        id: ver
+        shell: pwsh
+        run: |
+          $ref = "${{ github.event.inputs.tag }}"
+          if (-not $ref) { $ref = "${{ github.ref_name }}" }
+          $v = $ref.TrimStart('v')
+          "tag=$ref"     >> $env:GITHUB_OUTPUT
+          "version=$v"   >> $env:GITHUB_OUTPUT
+
+      - name: Publish single-file (ReadyToRun, self-contained)
+        run: dotnet publish -c Release -r win-x64 -p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Package exe + checksum
+        id: pkg
+        shell: pwsh
+        run: |
+          $pub = "bin/Release/net9.0-windows/win-x64/publish"
+          $exe = "WinEML-${{ steps.ver.outputs.version }}-win-x64.exe"
+          Copy-Item "$pub/WinEML.exe" $exe
+          $hash = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  $exe" | Out-File "SHA256SUMS.txt" -Encoding ascii
+          "exe=$exe" >> $env:GITHUB_OUTPUT
+
+      - name: Stage draft GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: WinEML ${{ steps.ver.outputs.tag }}
+          files: |
+            ${{ steps.pkg.outputs.exe }}
+            SHA256SUMS.txt
+          generate_release_notes: true
+          draft: true

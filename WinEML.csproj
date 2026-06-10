@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>WinEML</RootNamespace>
+    <AssemblyName>WinEML</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- The test project lives under tests\ — keep it out of the app's compile glob. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests\**\*</DefaultItemExcludes>
+
+    <!--
+      Cold-start strategy: ReadyToRun (precompiled-to-native) + self-contained.
+      NativeAOT was the original plan but WebView2's .NET SDK relies on built-in
+      COM, which AOT disables — so AOT and WebView2 are mutually exclusive. We keep
+      WebView2 (faithful, sandboxable HTML rendering) and take R2R's fast startup.
+    -->
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <SelfContained>true</SelfContained>
+    <!-- One portable, self-contained .exe — the canonical publish artifact. -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <!-- Don't drag XML doc files from packages into the publish output. -->
+    <AllowedReferenceRelatedFileExtensions>none</AllowedReferenceRelatedFileExtensions>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <Optimize>true</Optimize>
+    <TieredCompilation>true</TieredCompilation>
+    <TieredPGO>true</TieredPGO>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+
+    <!-- WinForms designer reflection isn't used; we hand-build the UI for AOT. -->
+    <EnableUnsafeBinaryFormatterSerialization>false</EnableUnsafeBinaryFormatterSerialization>
+    <Version>0.1.0</Version>
+    <Product>WinEML</Product>
+    <Company>WinEML</Company>
+    <Description>A lightning-fast .eml file viewer for Windows.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MimeKit" Version="4.17.0" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2792.45" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WinEML.Tests" />
+  </ItemGroup>
+
+</Project>

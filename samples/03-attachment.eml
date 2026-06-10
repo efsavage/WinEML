@@ -1,0 +1,19 @@
+From: Reports <reports@example.com>
+To: bob@example.com
+Subject: WinEML test - message with attachment
+Date: Tue, 03 Jun 2026 09:15:00 -0400
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="MIX"
+
+--MIX
+Content-Type: text/html; charset=utf-8
+
+<html><body style="font-family:Segoe UI"><p>Your <b>monthly report</b> is attached.</p></body></html>
+
+--MIX
+Content-Type: text/plain; charset=utf-8
+Content-Transfer-Encoding: base64
+Content-Disposition: attachment; filename="report.txt"
+
+SGVsbG8sIHRoaXMgaXMgYW4gYXR0YWNoZWQgdGV4dCBmaWxlIGZyb20gV2luRU1MJ3MgdGVzdCBzdWl0ZS4NCkxpbmUgMi4=
+--MIX--

@@ -1,0 +1,13 @@
+# Build output
+bin/
+obj/
+publish/
+*.user
+
+# Rider / VS
+.vs/
+.idea/
+
+# NativeAOT intermediates
+*.pdb
+*.ilk
