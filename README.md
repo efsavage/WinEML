@@ -10,8 +10,8 @@ Double-clicking an `.eml` file on Windows usually means waiting for Outlook to l
 
 - **Cold-start optimized.** Precompiled to native code (ReadyToRun) and self-contained — no runtime to install, no JIT warm-up on the startup path. The window, headers, and text body appear immediately; the HTML engine warms up *in parallel* so its cost overlaps parsing instead of stacking on top of it.
 - **Real HTML rendering** via the Edge WebView2 engine — handles real-world HTML email faithfully.
-- **Private and locked down by default.** JavaScript is disabled outright. Every remote request — tracking pixels, remote images, web fonts, beacons — is **hard-blocked at the engine level**. Only images embedded *inside the file* (inline `cid:` parts, inlined as local `data:` URIs) display. Clicking a link hands it to your browser; nothing navigates or loads on its own.
-- **Folder browsing.** Open one `.eml` and page through the rest of the folder with `◀ / ▶`, just like an image viewer.
+- **Private and locked down by default.** JavaScript is disabled outright. Every remote request — tracking pixels, remote images, web fonts, beacons — is **hard-blocked at the engine level**. Only images embedded *inside the file* (inline `cid:` parts, inlined as local `data:` URIs) display. Clicking a link hands it to your browser; nothing navigates or loads on its own. Remote images are strictly opt-in: load them **once** for the open message, or allow trusted domains from the **Tools ▾** menu.
+- **Folder browsing.** Open one `.eml` and page through the rest of the folder with `◀ / ▶` (wraps around at the ends), just like an image viewer.
 - **Attachments.** Listed along the bottom; click to save.
 - **Three views:** HTML · Text · Source (raw RFC 822).
 - **Portable.** One executable, no installer required.
@@ -86,6 +86,7 @@ Email is hostile input, so WinEML is locked down by default:
 
 - **No scripts.** JavaScript execution is disabled in the renderer (`IsScriptEnabled = false`).
 - **No network.** Every remote request — tracking pixels, remote images, web fonts, beacons — is hard-blocked at the WebView2 layer. Only resources embedded *inside the file* are shown: inline `cid:` images are inlined as local `data:` URIs.
+- **Remote images are opt-in only.** **Tools ▾** can load a message's remote images **once** (nothing saved), or allow a specific domain permanently (HTTPS-only, image requests only; stored as a plain text file in `%LOCALAPPDATA%\WinEML`, revocable from the same menu). Be aware that allowing a domain lets mail referencing it see when you read it (tracking pixels) — leave everything blocked for full privacy.
 - **Strict CSP, enforced twice.** Rendered messages are served with a `Content-Security-Policy` **response header** (`default-src 'none'; img-src data:; style-src 'unsafe-inline' data:; font-src data:; media-src data:; base-uri 'none'; form-action 'none'`) — a header governs the document no matter how malformed the email's markup is — and the same policy is injected as a meta tag for defense-in-depth. The renderer refuses remote/active content before the request blocker is even consulted.
 - **Nothing touches the disk.** Rendered bodies are streamed to the engine straight from memory — no temp files, ever, for any message size.
 - **Your files are left untouched.** WinEML opens messages strictly read-only with full sharing (it never locks a file) and preserves even the last-access timestamp — viewing a message leaves no trace on it.

@@ -38,6 +38,11 @@ internal sealed class MainForm : Form
     private int _loadGen;
     private string? _viewUri;
     private string? _viewHtml;
+    private string? _viewCsp;
+    private readonly RemoteImagePolicy _imagePolicy = new();
+    private bool _showImagesOnce; // one-shot override for the current message only
+    private readonly ToolStripMenuItem _miImagesOnce = new();
+    private readonly ToolStripMenuItem _miImageDomains = new("Allow images from");
 
     // Rendered bodies are served straight from memory under this private origin
     // (.invalid is a reserved, never-resolvable TLD) and never touch the disk.
@@ -95,8 +100,18 @@ internal sealed class MainForm : Form
         miSetDefault.Click += (_, _) => SetAsDefault();
         var miRemove = new ToolStripMenuItem("Remove .eml association");
         miRemove.Click += (_, _) => RemoveAssociation();
+        _miImagesOnce.Click += (_, _) =>
+        {
+            if (_currentPath is null) return;
+            _showImagesOnce = true;
+            LoadFile(_currentPath, keepImageOverride: true);
+        };
+        _btnTools.DropDownItems.Add(_miImagesOnce);
+        _btnTools.DropDownItems.Add(_miImageDomains);
+        _btnTools.DropDownItems.Add(new ToolStripSeparator());
         _btnTools.DropDownItems.Add(miSetDefault);
         _btnTools.DropDownItems.Add(miRemove);
+        _btnTools.DropDownOpening += (_, _) => RebuildImageMenu();
 
         _toolbar.Items.AddRange(new ToolStripItem[]
         {
@@ -256,13 +271,33 @@ internal sealed class MainForm : Form
             var body = new MemoryStream(Encoding.UTF8.GetBytes(_viewHtml));
             e.Response = env.CreateWebResourceResponse(body, 200, "OK",
                 "Content-Type: text/html; charset=utf-8\r\n" +
-                "Content-Security-Policy: " + EmlDocument.CspPolicy);
+                "Content-Security-Policy: " + (_viewCsp ?? EmlDocument.BuildCsp(false, null)));
+            return;
+        }
+
+        // Image requests the user has explicitly opted into — and nothing else.
+        if (e.ResourceContext == CoreWebView2WebResourceContext.Image &&
+            IsUserAllowedRemoteImage(uri))
+        {
+            Diag($"image allowed: {uri}");
             return;
         }
 
         // Block everything else: remote http/https, local files, and any
         // sub-resource the email reaches via a relative URL on our origin.
         e.Response = env.CreateWebResourceResponse(null, 403, "Blocked by WinEML", string.Empty);
+    }
+
+    /// <summary>
+    /// Did the user opt this remote image in? Allowlisted domains load over
+    /// HTTPS only; the per-message one-shot allows http(s) image requests.
+    /// </summary>
+    private bool IsUserAllowedRemoteImage(string uri)
+    {
+        if (!Uri.TryCreate(uri, UriKind.Absolute, out var u)) return false;
+        if (_showImagesOnce)
+            return u.Scheme == Uri.UriSchemeHttps || u.Scheme == Uri.UriSchemeHttp;
+        return u.Scheme == Uri.UriSchemeHttps && _imagePolicy.IsAllowed(u.Host);
     }
 
     private void OnNavigationStarting(object? sender, CoreWebView2NavigationStartingEventArgs e)
@@ -286,17 +321,19 @@ internal sealed class MainForm : Form
 
     // ---------------------------------------------------------------- loading
 
-    private async void LoadFile(string path)
+    private async void LoadFile(string path, bool keepImageOverride = false)
     {
         // Each load gets a generation id; a slower earlier load that finishes after
         // a newer one must not stomp the newer content. (Critical for a viewer —
         // showing the wrong message would be a trust failure.)
         int gen = ++_loadGen;
+        if (!keepImageOverride) _showImagesOnce = false; // the override never outlives its message
+        bool showImagesOnce = _showImagesOnce;
         try
         {
             Text = Path.GetFileName(path) + " — WinEML";
             ComputeSiblings(path);
-            var doc = await Task.Run(() => EmlDocument.Load(path));
+            var doc = await Task.Run(() => EmlDocument.Load(path, _imagePolicy.IsAllowed, showImagesOnce));
             if (gen != _loadGen) return; // superseded by a newer open/navigate
 
             Telemetry.Mark("parsed", Path.GetFileName(path));
@@ -395,7 +432,7 @@ internal sealed class MainForm : Form
                 }
                 else
                 {
-                    RenderHtml(_doc.HtmlBody!);
+                    RenderHtml(_doc.HtmlBody!, _doc.Csp);
                     _webView.Visible = true;
                     _webView.BringToFront();
                     _textView.Visible = false;
@@ -424,12 +461,13 @@ internal sealed class MainForm : Form
         UpdateToggleButtons();
     }
 
-    private void RenderHtml(string html)
+    private void RenderHtml(string html, string csp)
     {
         // Serve from memory under a fresh single-use URI; OnWebResourceRequested
         // answers it with the body plus the authoritative CSP header. No body of
         // any size ever touches the disk.
         _viewHtml = html;
+        _viewCsp = csp;
         _viewUri = $"{ViewOrigin}view/{Guid.NewGuid():N}";
         Diag($"RenderHtml len={html.Length} -> {_viewUri}");
         _webView.CoreWebView2.Navigate(_viewUri);
@@ -488,9 +526,8 @@ internal sealed class MainForm : Form
     private void Navigate(int delta)
     {
         if (_siblings.Length <= 1) return;
-        int next = _index + delta;
-        if (next < 0 || next >= _siblings.Length) return; // stop at the ends
-        _index = next;
+        // Wrap around at both ends, like an image viewer.
+        _index = (_index + delta + _siblings.Length) % _siblings.Length;
         LoadFile(_siblings[_index]);
     }
 
@@ -512,6 +549,51 @@ internal sealed class MainForm : Form
         };
         if (dlg.ShowDialog(this) == DialogResult.OK)
             LoadFile(dlg.FileName);
+    }
+
+    // ------------------------------------------------------- remote images UI
+
+    /// <summary>
+    /// Populate the Tools entries for the message on screen: a one-shot "load
+    /// images" for this message, and a persistent per-domain allowlist toggle
+    /// for each remote image host the message references.
+    /// </summary>
+    private void RebuildImageMenu()
+    {
+        var hosts = _doc?.RemoteImageHosts ?? Array.Empty<string>();
+
+        _miImagesOnce.Text = _showImagesOnce
+            ? "Remote images loaded for this message"
+            : hosts.Count > 0
+                ? $"Load remote images once ({hosts.Count} domain{(hosts.Count == 1 ? "" : "s")})"
+                : "Load remote images once";
+        _miImagesOnce.Enabled = hosts.Count > 0 && !_showImagesOnce;
+        _miImagesOnce.Checked = _showImagesOnce;
+
+        _miImageDomains.DropDownItems.Clear();
+        foreach (string host in hosts)
+        {
+            var item = new ToolStripMenuItem(host) { Checked = _imagePolicy.IsAllowed(host) };
+            item.Click += (_, _) =>
+            {
+                if (_imagePolicy.IsAllowed(host)) _imagePolicy.Revoke(host);
+                else _imagePolicy.Allow(host);
+                if (_currentPath is not null) LoadFile(_currentPath); // re-render under the new policy
+            };
+            _miImageDomains.DropDownItems.Add(item);
+        }
+        if (_imagePolicy.Count > 0)
+        {
+            if (hosts.Count > 0) _miImageDomains.DropDownItems.Add(new ToolStripSeparator());
+            var forget = new ToolStripMenuItem($"Forget all allowed domains ({_imagePolicy.Count})");
+            forget.Click += (_, _) =>
+            {
+                _imagePolicy.Clear();
+                if (_currentPath is not null) LoadFile(_currentPath);
+            };
+            _miImageDomains.DropDownItems.Add(forget);
+        }
+        _miImageDomains.Enabled = _miImageDomains.DropDownItems.Count > 0;
     }
 
     private void SetAsDefault()

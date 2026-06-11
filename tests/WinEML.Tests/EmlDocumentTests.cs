@@ -8,13 +8,14 @@ public class EmlDocumentTests
 {
     // Writes a MimeMessage to a temp .eml, loads it through the real pipeline,
     // and cleans up.
-    private static EmlDocument Load(MimeMessage message)
+    private static EmlDocument Load(
+        MimeMessage message, Func<string, bool>? isImageHostAllowed = null, bool allowAllImagesOnce = false)
     {
         string path = Path.Combine(Path.GetTempPath(), $"wineml_test_{Guid.NewGuid():N}.eml");
         try
         {
             message.WriteTo(path);
-            return EmlDocument.Load(path);
+            return EmlDocument.Load(path, isImageHostAllowed, allowAllImagesOnce);
         }
         finally
         {
@@ -126,12 +127,54 @@ public class EmlDocumentTests
     }
 
     [Fact]
-    public void Csp_MetaTagCarriesTheSharedPolicy()
+    public void Csp_MetaTagCarriesTheDocumentPolicy()
     {
-        // The meta tag and the response header MainForm serves must come from
-        // the same policy constant — this pins the meta side to it.
+        // The meta tag and the response header MainForm serves both come from
+        // doc.Csp — this pins the meta side to it.
         var doc = Load(HtmlWith("<p>hi</p>"));
-        Assert.Contains(EmlDocument.CspPolicy, doc.HtmlBody!);
+        Assert.Contains(doc.Csp, doc.HtmlBody!);
+        Assert.Contains("img-src data:;", doc.Csp);
+        Assert.Contains("default-src 'none'", doc.Csp);
+    }
+
+    // ---- remote image policy ----
+
+    [Fact]
+    public void RemoteImages_StrictByDefault_AndHostsAreReported()
+    {
+        var doc = Load(HtmlWith(
+            "<img src=\"https://cdn.example.com/a.png\"><IMG SRC='http://tracker.evil.example/p.gif'>"));
+
+        Assert.Equal(new[] { "cdn.example.com", "tracker.evil.example" }, doc.RemoteImageHosts);
+        Assert.Contains("img-src data:;", doc.Csp); // nothing remote in the policy
+    }
+
+    [Fact]
+    public void RemoteImages_AllowedHost_AppearsInCsp_HttpsOnly()
+    {
+        var doc = Load(HtmlWith(
+            "<img src=\"https://cdn.example.com/a.png\"><img src=\"https://other.example.org/b.png\">"),
+            isImageHostAllowed: h => h == "cdn.example.com");
+
+        Assert.Contains("img-src data: https://cdn.example.com https://*.cdn.example.com;", doc.Csp);
+        Assert.DoesNotContain("other.example.org", doc.Csp);
+        Assert.DoesNotContain("http:", doc.Csp.Replace("https:", ""));
+    }
+
+    [Fact]
+    public void RemoteImages_OneShot_AllowsAllImageSchemes()
+    {
+        var doc = Load(HtmlWith("<img src=\"https://cdn.example.com/a.png\">"),
+            allowAllImagesOnce: true);
+
+        Assert.Contains("img-src data: https: http:;", doc.Csp);
+    }
+
+    [Fact]
+    public void RemoteImages_InlineCidAndDataUris_AreNotReportedAsRemote()
+    {
+        var doc = Load(HtmlWith("<img src=\"cid:logo\">", InlineImage("logo")));
+        Assert.Empty(doc.RemoteImageHosts);
     }
 
     // ---- inline image (cid:) embedding ----

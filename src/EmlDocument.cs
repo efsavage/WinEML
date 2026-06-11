@@ -29,10 +29,17 @@ internal sealed class EmlDocument
 
     public IReadOnlyList<EmlAttachment> Attachments { get; }
 
+    /// <summary>Remote (http/https) image hosts referenced by the HTML body.</summary>
+    public IReadOnlyList<string> RemoteImageHosts { get; }
+
+    /// <summary>The CSP governing this document's rendered view (header + meta).</summary>
+    public string Csp { get; }
+
     private EmlDocument(
         string filePath, string from, string to, string cc, string replyTo,
         string subject, string date, string textBody, string? htmlBody,
-        IReadOnlyList<EmlAttachment> attachments)
+        IReadOnlyList<EmlAttachment> attachments,
+        IReadOnlyList<string> remoteImageHosts, string csp)
     {
         FilePath = filePath;
         From = from;
@@ -44,9 +51,20 @@ internal sealed class EmlDocument
         TextBody = textBody;
         HtmlBody = htmlBody;
         Attachments = attachments;
+        RemoteImageHosts = remoteImageHosts;
+        Csp = csp;
     }
 
-    public static EmlDocument Load(string path)
+    /// <param name="isImageHostAllowed">
+    /// The user's persistent image-domain allowlist (null = nothing allowed).
+    /// </param>
+    /// <param name="allowAllImagesOnce">
+    /// One-shot override: relax the image policy for this load only.
+    /// </param>
+    public static EmlDocument Load(
+        string path,
+        Func<string, bool>? isImageHostAllowed = null,
+        bool allowAllImagesOnce = false)
     {
         MimeMessage message;
         using (var stream = UntouchedFile.OpenRead(path))
@@ -57,10 +75,15 @@ internal sealed class EmlDocument
             : message.Date.LocalDateTime.ToString("ddd, d MMM yyyy  h:mm tt");
 
         string? html = message.HtmlBody;
+        IReadOnlyList<string> remoteHosts = Array.Empty<string>();
+        string csp = BuildCsp(allowAllImagesOnce, null);
         if (!string.IsNullOrEmpty(html))
         {
             html = EmbedInlineImages(message, html!);
-            html = InjectCsp(html);
+            remoteHosts = ExtractRemoteImageHosts(html);
+            if (!allowAllImagesOnce && isImageHostAllowed is not null)
+                csp = BuildCsp(false, remoteHosts.Where(isImageHostAllowed));
+            html = InjectCsp(html, csp);
         }
 
         string text = message.TextBody ?? string.Empty;
@@ -79,48 +102,83 @@ internal sealed class EmlDocument
             date: date,
             textBody: text,
             htmlBody: html,
-            attachments: attachments);
+            attachments: attachments,
+            remoteImageHosts: remoteHosts,
+            csp: csp);
     }
 
     private static string FormatAddresses(InternetAddressList list)
         => list.Count == 0 ? string.Empty : list.ToString();
 
-    // The one CSP for rendered mail: only locally-embedded (data:) resources and
-    // inline styles. Anything remote — scripts, images, fonts, stylesheets, frames,
-    // beacons — is refused by the renderer itself. Delivered twice: as the response
-    // *header* when MainForm serves the document (authoritative — immune to malformed
+    // The one CSP for rendered mail: locally-embedded (data:) resources and inline
+    // styles only, with the img-src widened solely by the user's explicit choices.
+    // Anything else remote — scripts, fonts, stylesheets, frames, beacons — is
+    // refused by the renderer itself. Delivered twice: as the response *header*
+    // when MainForm serves the document (authoritative — immune to malformed
     // markup), and as a meta tag injected below (defense-in-depth).
-    internal const string CspPolicy =
-        "default-src 'none'; " +
-        "img-src data:; " +
-        "style-src 'unsafe-inline' data:; " +
-        "font-src data:; " +
-        "media-src data:; " +
-        "base-uri 'none'; " +
-        "form-action 'none'";
-
-    private const string CspMeta =
-        "<meta http-equiv=\"Content-Security-Policy\" content=\"" + CspPolicy + "\">";
-
-    private static string InjectCsp(string html)
+    internal static string BuildCsp(bool allowAllImagesOnce, IEnumerable<string>? allowedImageHosts)
     {
+        var img = new StringBuilder("img-src data:");
+        if (allowAllImagesOnce)
+        {
+            img.Append(" https: http:");
+        }
+        else if (allowedImageHosts is not null)
+        {
+            // Allowlisted domains are HTTPS-only; subdomains ride along to match
+            // RemoteImagePolicy semantics. Hosts are validated before they get here.
+            foreach (string host in allowedImageHosts)
+                img.Append($" https://{host} https://*.{host}");
+        }
+
+        return "default-src 'none'; " +
+               img + "; " +
+               "style-src 'unsafe-inline' data:; " +
+               "font-src data:; " +
+               "media-src data:; " +
+               "base-uri 'none'; " +
+               "form-action 'none'";
+    }
+
+    private static string InjectCsp(string html, string csp)
+    {
+        string meta = "<meta http-equiv=\"Content-Security-Policy\" content=\"" + csp + "\">";
+
         // Insert the CSP meta as early as possible inside <head> so it governs the
         // whole document. Fall back gracefully for malformed/partial HTML.
         int head = FindOpenTag(html, "head");
         if (head >= 0)
         {
             int close = html.IndexOf('>', head);
-            if (close >= 0) return html.Insert(close + 1, "\n" + CspMeta);
+            if (close >= 0) return html.Insert(close + 1, "\n" + meta);
         }
 
         int htmlTag = FindOpenTag(html, "html");
         if (htmlTag >= 0)
         {
             int close = html.IndexOf('>', htmlTag);
-            if (close >= 0) return html.Insert(close + 1, "<head>" + CspMeta + "</head>");
+            if (close >= 0) return html.Insert(close + 1, "<head>" + meta + "</head>");
         }
 
-        return CspMeta + html;
+        return meta + html;
+    }
+
+    // src attribute of an <img> tag pointing at a remote http(s) resource.
+    private static readonly Regex RemoteImageSrc = new(
+        "<img[^>]*?src\\s*=\\s*[\"']?(https?://[^\"'\\s>]+)",
+        RegexOptions.IgnoreCase);
+
+    /// <summary>Distinct, validated remote image hosts referenced by the HTML.</summary>
+    internal static IReadOnlyList<string> ExtractRemoteImageHosts(string html)
+    {
+        var hosts = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (Match m in RemoteImageSrc.Matches(html))
+        {
+            if (Uri.TryCreate(m.Groups[1].Value, UriKind.Absolute, out var uri) &&
+                Uri.CheckHostName(uri.Host) != UriHostNameType.Unknown)
+                hosts.Add(uri.Host);
+        }
+        return hosts.Count == 0 ? Array.Empty<string>() : hosts.ToArray();
     }
 
     /// <summary>
